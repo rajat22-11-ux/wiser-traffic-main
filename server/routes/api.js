@@ -26,7 +26,15 @@ router.get('/auth/callback', async (req, res) => {
     const authClient = client(req);
     const user = await ga4.getUserInfo(authClient);
     req.session.user = { name: user.name, email: user.email, picture: user.picture };
-    res.redirect('/#select-property');
+
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err.message);
+        return res.redirect('/?error=auth_failed');
+      }
+
+      res.redirect('/#select-property');
+    });
   } catch (e) {
     console.error('Auth callback error:', e.message);
     res.redirect('/?error=auth_failed');

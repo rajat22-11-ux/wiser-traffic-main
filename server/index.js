@@ -6,16 +6,27 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors({ origin: process.env.NODE_ENV === 'production' ? false : 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: isProduction ? false : 'http://localhost:3000', credentials: true }));
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret-change-in-prod',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 1000 * 60 * 60 * 12 },
+  proxy: isProduction,
+  cookie: {
+    secure: isProduction,
+    sameSite: 'lax',
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 12,
+  },
 }));
 
 app.use('/api', require('./routes/api'));
