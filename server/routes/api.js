@@ -54,19 +54,40 @@ router.get('/auth/me', (req, res) => {
 router.get('/properties', auth, async (req, res) => {
   try {
     const props = await ga4.listProperties(client(req));
-    res.json({ properties: props });
+    res.json({ properties: props, allowManualEntry: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    if (['analytics_admin_api_disabled', 'analytics_admin_access_denied'].includes(e.code)) {
+      return res.json({
+        properties: [],
+        allowManualEntry: true,
+        lookupError: e.message,
+        lookupErrorCode: e.code,
+      });
+    }
+
+    res.status(e.status || 500).json({ error: e.message, code: e.code || 'property_lookup_failed' });
   }
 });
 
-router.post('/properties/select', auth, (req, res) => {
+router.post('/properties/select', auth, async (req, res) => {
   const { propertyId, propertyName, siteUrl } = req.body;
-  if (!propertyId) return res.status(400).json({ error: 'propertyId required' });
-  req.session.propertyId = propertyId;
-  req.session.propertyName = propertyName || propertyId;
-  if (siteUrl) req.session.siteUrl = siteUrl;
-  res.json({ ok: true });
+  const cleanPropertyId = String(propertyId || '').trim();
+  const cleanSiteUrl = String(siteUrl || '').trim();
+
+  if (!cleanPropertyId) return res.status(400).json({ error: 'propertyId required', code: 'missing_property_id' });
+
+  try {
+    await ga4.validateProperty(client(req), cleanPropertyId);
+    req.session.propertyId = cleanPropertyId;
+    req.session.propertyName = String(propertyName || cleanPropertyId).trim();
+
+    if (cleanSiteUrl) req.session.siteUrl = cleanSiteUrl;
+    else delete req.session.siteUrl;
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message, code: e.code || 'property_select_failed' });
+  }
 });
 
 // ── DATA ROUTES ───────────────────────────────────────────────────────────────

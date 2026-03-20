@@ -56,8 +56,9 @@ npm start       # runs on http://localhost:3001
 1. Go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Select/create a project (use your "wiser admin Amit" project)
 3. Go to **APIs & Services → Library**
-4. Enable: **Google Analytics Data API** ✓ (you already did this)
-5. Enable: **Google Search Console API** (for SEO tab)
+4. Enable: **Google Analytics Data API** (used for dashboard reports)
+5. Enable: **Google Analytics Admin API** (used to list GA4 properties after sign-in)
+6. Enable: **Google Search Console API** (for SEO tab)
 
 ### Step 2 — Create OAuth 2.0 Client ID
 
@@ -76,7 +77,7 @@ npm start       # runs on http://localhost:3001
 2. User type: **Internal** (fastest — only your Google Workspace users)
    - OR External → add your email as test user
 3. App name: `Wiser Traffic`
-4. Add scopes: analytics.readonly, webmasters.readonly, userinfo.email
+4. Add scopes: analytics.readonly, webmasters.readonly, userinfo.email, userinfo.profile
 
 ### Step 4 — Add env vars to your deploy
 
@@ -93,7 +94,7 @@ APP_URL=https://your-deployed-url.com
 
 1. User visits the app → clicks "Sign in with Google"
 2. Google OAuth2 flow → user grants Analytics + Search Console read access
-3. App lists their GA4 properties → user selects one
+3. App lists their GA4 properties through the Analytics Admin API, or the user enters a GA4 property ID manually
 4. Dashboard loads real data via GA4 Data API + Search Console API
 5. Session stored server-side (12h expiry)
 

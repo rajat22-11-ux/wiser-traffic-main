@@ -8,6 +8,96 @@ const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.profile',
 ];
 
+class ServiceError extends Error {
+  constructor(message, code, status) {
+    super(message);
+    this.name = 'ServiceError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+function getGoogleErrorStatus(error, fallback = 500) {
+  return error?.code || error?.response?.status || fallback;
+}
+
+function getGoogleErrorMessage(error, fallback) {
+  return error?.response?.data?.error?.message
+    || error?.errors?.[0]?.message
+    || error?.message
+    || fallback;
+}
+
+function buildPropertyLookupError(error) {
+  const message = getGoogleErrorMessage(error, 'Unable to load GA4 properties.');
+  const status = getGoogleErrorStatus(error);
+
+  if (/has not been used|is disabled|enable it by visiting/i.test(message)) {
+    return new ServiceError(
+      'Google Analytics Admin API is not enabled for this Google Cloud project. Enable it to load properties automatically, or enter a GA4 property ID manually.',
+      'analytics_admin_api_disabled',
+      403
+    );
+  }
+
+  if (status === 401) {
+    return new ServiceError(
+      'Your Google session expired. Sign in again and retry loading properties.',
+      'google_session_expired',
+      401
+    );
+  }
+
+  if (status === 403) {
+    return new ServiceError(
+      'This Google account cannot list GA4 properties with the current setup. Enable the Analytics Admin API, or enter a GA4 property ID manually.',
+      'analytics_admin_access_denied',
+      403
+    );
+  }
+
+  return new ServiceError(message, 'property_lookup_failed', status);
+}
+
+function buildPropertyValidationError(error, propertyId) {
+  const message = getGoogleErrorMessage(error, 'Unable to validate the selected GA4 property.');
+  const status = getGoogleErrorStatus(error);
+
+  if (/has not been used|is disabled|enable it by visiting/i.test(message)) {
+    return new ServiceError(
+      'Google Analytics Data API is not enabled for this Google Cloud project. Enable it before connecting a property.',
+      'analytics_data_api_disabled',
+      403
+    );
+  }
+
+  if (status === 401) {
+    return new ServiceError(
+      'Your Google session expired. Sign in again before selecting a property.',
+      'google_session_expired',
+      401
+    );
+  }
+
+  if (status === 403) {
+    return new ServiceError(
+      `You do not have access to GA4 property ${propertyId}.`,
+      'property_access_denied',
+      403
+    );
+  }
+
+  if (status === 404) {
+    return new ServiceError(
+      `GA4 property ${propertyId} was not found.`,
+      'property_not_found',
+      404
+    );
+  }
+
+  return new ServiceError(message, 'property_validation_failed', status);
+}
+
 function getRedirectUri() {
   const base = process.env.APP_URL || 'http://localhost:3001';
   return `${base}/api/auth/callback`;
@@ -60,8 +150,27 @@ async function listProperties(authClient) {
       name: p.displayName,
       url: p.websiteUri || '',
     }));
-  } catch {
-    return [];
+  } catch (error) {
+    throw buildPropertyLookupError(error);
+  }
+}
+
+async function validateProperty(authClient, propertyId) {
+  const id = String(propertyId || '').trim();
+
+  if (!/^\d+$/.test(id)) {
+    throw new ServiceError('Enter a numeric GA4 property ID.', 'invalid_property_id', 400);
+  }
+
+  try {
+    await ga4Report(authClient, id, {
+      dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+      metrics: [{ name: 'sessions' }],
+      limit: 1,
+    });
+    return id;
+  } catch (error) {
+    throw buildPropertyValidationError(error, id);
   }
 }
 
@@ -218,4 +327,4 @@ async function getSEO(authClient, siteUrl, days) {
   } catch { return null; }
 }
 
-module.exports = { getAuthUrl, exchangeCode, makeAuthClient, getUserInfo, listProperties, getOverview, getAITraffic, getSocial, getReferrals, getShopifyTraffic, getReturnVisitors, getConversions, getSEO };
+module.exports = { getAuthUrl, exchangeCode, makeAuthClient, getUserInfo, listProperties, validateProperty, getOverview, getAITraffic, getSocial, getReferrals, getShopifyTraffic, getReturnVisitors, getConversions, getSEO };
